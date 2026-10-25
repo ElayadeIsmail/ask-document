@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f3eee4;
+  --paper-2: #ebe4d6;
+  --ink: #1c1814;
+  --muted: #6f675c;
+  --line: #d9cebb;
+  --moss: #2d4a3e;
+  --moss-2: #3d6253;
+  --clay: #c45c32;
+  --amber: #b45309;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-moss: var(--moss);
+  --color-moss-2: var(--moss-2);
+  --color-clay: var(--clay);
+  --color-amber: var(--amber);
+  --font-sans: var(--font-geist-sans);
+  --font-serif: var(--font-newsreader);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: #e8c9b4;
+  color: var(--ink);
+}
+
+textarea,
+input {
+  outline: none;
+}
+
+.citation-mark {
+  font-family: var(--font-serif), ui-serif, Georgia, serif;
+}
