@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+
+# App data and secrets
+.env
+data/
+*.db
+
+# Models / caches
+.cache/
+huggingface/
+.huggingface/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/

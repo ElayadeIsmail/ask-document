@@ -1,0 +1,38 @@
+[project]
+name = "ask-doc"
+version = "0.1.0"
+description = "RAG backend: ingest PDFs, extract structure, search semantically, and answer with citations."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "chromadb>=0.5.23",
+    "fastapi>=0.115.0",
+    "httpx>=0.27.2",
+    "ollama>=0.4.4",
+    "pillow>=11.0.0",
+    "pydantic-settings>=2.6.0",
+    "pymupdf>=1.24.14",
+    "pytesseract>=0.3.13",
+    "python-multipart>=0.0.12",
+    "sentence-transformers>=3.3.1",
+    "sqlalchemy>=2.0.36",
+    "uvicorn[standard]>=0.32.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "httpx>=0.27.2",
+    "ruff>=0.8.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
