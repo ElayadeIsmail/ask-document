@@ -5,12 +5,14 @@ description = "RAG backend: ingest PDFs, extract structure, search semantically,
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+    "bcrypt>=5.0.0",
     "chromadb>=0.5.23",
     "fastapi>=0.115.0",
     "httpx>=0.27.2",
     "ollama>=0.4.4",
     "pillow>=11.0.0",
     "pydantic-settings>=2.6.0",
+    "pyjwt>=2.15.1",
     "pymupdf>=1.24.14",
     "pytesseract>=0.3.13",
     "python-multipart>=0.0.12",
