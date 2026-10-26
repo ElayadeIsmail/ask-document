@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     app_name: str = "AskDoc"
     debug: bool = False
+    api_prefix: str = "/api/v1"
 
     data_dir: Path = Field(default=Path("data"))
     max_upload_mb: int = 50
@@ -47,6 +48,20 @@ class Settings(BaseSettings):
     ocr_enabled: bool = False
     ocr_lang: str = "eng+fra"
     ocr_min_chars: int = 40
+
+    jwt_secret: str = "dev-change-me-askdoc-secret-key!!"
+    access_token_expire_minutes: int = 60 * 24 * 7
+    admin_email: str = "admin@askdoc.local"
+    admin_username: str = "admin"
+    admin_password: str = "admin12345"
+
+    @field_validator("api_prefix")
+    @classmethod
+    def normalize_api_prefix(cls, value: str) -> str:
+        prefix = value.strip().rstrip("/")
+        if not prefix.startswith("/"):
+            prefix = f"/{prefix}"
+        return prefix or "/api/v1"
 
     @property
     def resolved_data_dir(self) -> Path:
