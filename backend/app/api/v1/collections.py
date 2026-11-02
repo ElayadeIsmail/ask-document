@@ -4,27 +4,39 @@ import shutil
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps import get_ingestion, get_settings_dep, get_vectorstore
-from app.api.serializers import to_collection_out, to_document_out
+from app.api.deps import get_current_user, get_ingestion, get_rag, get_settings_dep, get_vectorstore
+from app.api.serializers import to_chat_message, to_collection_out, to_document_out
+from app.api.stream import stream_answer
 from app.core.config import Settings
 from app.core.exceptions import NotFoundError
-from app.db.models import Collection, Document, DocumentStatus
+from app.db.models import Collection, Document, DocumentStatus, User
 from app.db.session import get_db
+from app.schemas.chat import ChatMessageOut, CollectionChatCreate
 from app.schemas.collection import CollectionCreate, CollectionOut
 from app.schemas.document import DocumentOut
+from app.schemas.qa import AskRequest, AskResponse
+from app.services.access import assert_collection_owner, load_collection
+from app.services.chatlog import load_messages, persist_exchange, prior_turns
 from app.services.ingestion import IngestionService
+from app.services.rag import RAGService
 from app.services.vectorstore import VectorStore
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
 
 @router.post("", response_model=CollectionOut, status_code=status.HTTP_201_CREATED)
-def create_collection(payload: CollectionCreate, db: Session = Depends(get_db)) -> CollectionOut:
+def create_collection(
+    payload: CollectionCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> CollectionOut:
     collection = Collection(
         id=str(uuid.uuid4()),
+        owner_id=user.id,
         name=payload.name.strip(),
         description=payload.description,
     )
@@ -35,9 +47,13 @@ def create_collection(payload: CollectionCreate, db: Session = Depends(get_db)) 
 
 
 @router.get("", response_model=list[CollectionOut])
-def list_collections(db: Session = Depends(get_db)) -> list[CollectionOut]:
+def list_collections(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[CollectionOut]:
     collections = db.scalars(
         select(Collection)
+        .where(Collection.owner_id == user.id)
         .options(selectinload(Collection.documents))
         .order_by(Collection.created_at.desc())
     ).all()
@@ -45,10 +61,13 @@ def list_collections(db: Session = Depends(get_db)) -> list[CollectionOut]:
 
 
 @router.get("/{collection_id}", response_model=CollectionOut)
-def get_collection(collection_id: str, db: Session = Depends(get_db)) -> CollectionOut:
-    collection = db.get(Collection, collection_id)
-    if collection is None:
-        raise NotFoundError("Collection not found")
+def get_collection(
+    collection_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> CollectionOut:
+    collection = load_collection(db, collection_id)
+    assert_collection_owner(user, collection)
     return to_collection_out(collection)
 
 
@@ -58,10 +77,10 @@ def delete_collection(
     db: Session = Depends(get_db),
     vectorstore: VectorStore = Depends(get_vectorstore),
     settings: Settings = Depends(get_settings_dep),
+    user: User = Depends(get_current_user),
 ) -> None:
-    collection = db.get(Collection, collection_id)
-    if collection is None:
-        raise NotFoundError("Collection not found")
+    collection = load_collection(db, collection_id)
+    assert_collection_owner(user, collection)
     vectorstore.delete_collection(collection_id)
     folder = settings.upload_dir / collection_id
     if folder.exists():
@@ -72,11 +91,12 @@ def delete_collection(
 
 @router.get("/{collection_id}/documents", response_model=list[DocumentOut])
 def list_collection_documents(
-    collection_id: str, db: Session = Depends(get_db)
+    collection_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> list[DocumentOut]:
-    collection = db.get(Collection, collection_id)
-    if collection is None:
-        raise NotFoundError("Collection not found")
+    collection = load_collection(db, collection_id)
+    assert_collection_owner(user, collection)
     return [to_document_out(doc) for doc in collection.documents]
 
 
@@ -92,10 +112,10 @@ def upload_documents(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings_dep),
     ingestion: IngestionService = Depends(get_ingestion),
+    user: User = Depends(get_current_user),
 ) -> list[DocumentOut]:
-    collection = db.get(Collection, collection_id)
-    if collection is None:
-        raise NotFoundError("Collection not found")
+    collection = load_collection(db, collection_id)
+    assert_collection_owner(user, collection)
     if not files:
         raise HTTPException(status_code=400, detail="At least one PDF is required")
 
@@ -134,3 +154,62 @@ def upload_documents(
         background_tasks.add_task(ingestion.ingest_document, document.id)
 
     return [to_document_out(document) for document in created]
+
+
+@router.get("/{collection_id}/messages", response_model=list[ChatMessageOut])
+def list_collection_messages(
+    collection_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[ChatMessageOut]:
+    collection = load_collection(db, collection_id)
+    assert_collection_owner(user, collection)
+    return [to_chat_message(message) for message in load_messages(db, collection_id=collection.id)]
+
+
+@router.post("/{collection_id}/messages/stream")
+def stream_collection_message(
+    collection_id: str,
+    payload: CollectionChatCreate,
+    db: Session = Depends(get_db),
+    rag: RAGService = Depends(get_rag),
+    user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    collection = load_collection(db, collection_id)
+    assert_collection_owner(user, collection)
+    document_ids = _owned_documents(db, collection.id, payload.document_ids)
+    question = payload.question.strip()
+    request = AskRequest(
+        question=question,
+        collection_id=collection.id,
+        document_ids=document_ids,
+        history=prior_turns(load_messages(db, collection_id=collection.id)),
+    )
+    owner_id = user.id
+    saved_collection_id = collection.id
+
+    def save(result: AskResponse) -> None:
+        persist_exchange(
+            user_id=owner_id,
+            collection_id=saved_collection_id,
+            question=question,
+            answer=result.answer,
+            citations=[item.model_dump() for item in result.citations],
+        )
+
+    return stream_answer(rag, request, save)
+
+
+def _owned_documents(
+    db: Session,
+    collection_id: str,
+    document_ids: list[str] | None,
+) -> list[str] | None:
+    if not document_ids:
+        return None
+    unique = list(dict.fromkeys(document_ids))
+    for document_id in unique:
+        document = db.get(Document, document_id)
+        if document is None or document.collection_id != collection_id:
+            raise NotFoundError("Document not found")
+    return unique
