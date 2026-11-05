@@ -73,6 +73,8 @@ async def lifespan(app: FastAPI):
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     settings.chroma_dir.mkdir(parents=True, exist_ok=True)
     init_db()
+    if settings.jwt_secret == "dev-change-me-askdoc-secret-key!!":
+        logger.warning("JWT_SECRET is still the default value")
 
     embeddings = EmbeddingService(settings)
     vectorstore = VectorStore(settings)
@@ -138,7 +140,7 @@ def create_app() -> FastAPI:
         return {
             "name": settings.app_name,
             "docs": "/docs",
-            "health": "/api/v1/health",
+            "health": f"{settings.api_prefix}/health",
         }
 
     return app
