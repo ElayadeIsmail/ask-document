@@ -73,6 +73,62 @@ export type ChatTurn = {
   model?: string;
   error?: string;
   pending?: boolean;
+  username: string;
+  userId: string;
+};
+
+export type AuthUser = {
+  id: string;
+  email: string;
+  username: string;
+  role: string;
+  created_at: string;
+};
+
+export type UserPublic = {
+  id: string;
+  username: string;
+};
+
+export type ShareNotice = {
+  id: string;
+  document_id: string;
+  filename: string;
+  from_username: string;
+  to_username: string;
+  status: string;
+  created_at: string;
+};
+
+export type SharedDocument = DocumentRecord & {
+  share_id: string;
+  shared_by: string;
+};
+
+export type ChatMessage = {
+  id: string;
+  document_id: string | null;
+  collection_id: string | null;
+  user_id: string;
+  username: string;
+  role: "user" | "assistant" | string;
+  content: string;
+  citations: Citation[] | null;
+  created_at: string;
+};
+
+export type AdminDocument = {
+  id: string;
+  filename: string;
+  status: string;
+  collection_id: string;
+  collection_name: string;
+  page_count: number;
+  created_at: string;
+};
+
+export type AdminUser = AuthUser & {
+  documents: AdminDocument[];
 };
 
 export type Health = {
