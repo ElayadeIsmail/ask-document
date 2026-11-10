@@ -3,28 +3,39 @@
 import { FileText, Trash2, Upload } from "lucide-react";
 import { DragEvent, useMemo, useRef, useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { Collection, DocumentRecord } from "@/lib/types";
 
 type LibraryProps = {
   collection: Collection | null;
   documents: DocumentRecord[];
   uploading: boolean;
-  scopeIds: string[];
+  selectedDocumentId: string | null;
+  readOnly?: boolean;
+  backLabel?: string;
+  onBack?: () => void;
   onUpload: (files: File[]) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onRetry: (id: string) => Promise<void>;
-  onToggleScope: (id: string) => void;
+  onOpen: (id: string) => void;
+  onShare?: (document: DocumentRecord) => void;
 };
 
 export function Library({
   collection,
   documents,
   uploading,
-  scopeIds,
+  selectedDocumentId,
+  readOnly = false,
+  backLabel,
+  onBack,
   onUpload,
   onDelete,
   onRetry,
-  onToggleScope,
+  onOpen,
+  onShare,
 }: LibraryProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -67,12 +78,21 @@ export function Library({
       <header className="border-b border-line px-5 py-4">
         <p className="text-[11px] uppercase tracking-[0.18em] text-muted">Library</p>
         <h2 className="mt-1 truncate font-serif text-2xl italic">{collection.name}</h2>
-        <p className="mt-1 text-sm text-muted">{hint}</p>
+        <p className="mt-1 text-sm text-muted">
+          {readOnly && collection.description ? collection.description : hint}
+        </p>
+        {onBack && (
+          <Button variant="link" size="xs" onClick={onBack} className="mt-2 font-medium">
+            {backLabel || "Back"}
+          </Button>
+        )}
       </header>
 
-      <button
-        type="button"
+      {!readOnly && (
+      <Button
+        variant="dropzone"
         disabled={uploading}
+        data-dragging={dragging ? "true" : undefined}
         onClick={() => inputRef.current?.click()}
         onDragOver={(event) => {
           event.preventDefault();
@@ -80,11 +100,7 @@ export function Library({
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
-        className={`mx-4 mt-4 cursor-pointer rounded-xl border border-dashed px-4 py-5 text-left transition ${
-          dragging
-            ? "border-moss bg-moss/5"
-            : "border-line bg-paper hover:border-moss/40"
-        } disabled:cursor-wait`}
+        className="mx-4 mt-4"
       >
         <div className="flex items-center gap-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-paper">
@@ -97,7 +113,7 @@ export function Library({
             <div className="text-xs text-muted">Click or drop files · PDF only</div>
           </div>
         </div>
-        <input
+        <Input
           ref={inputRef}
           type="file"
           accept="application/pdf,.pdf"
@@ -108,83 +124,87 @@ export function Library({
             event.target.value = "";
           }}
         />
-      </button>
+      </Button>
+      )}
 
       <ul className="min-h-0 max-h-56 flex-1 space-y-2 overflow-y-auto p-4 lg:max-h-none">
         {documents.map((document) => {
           const info = document.structured_info;
-          const scoped = scopeIds.includes(document.id);
+          const selected = document.id === selectedDocumentId;
           return (
           <li
             key={document.id}
             className={`rounded-xl border bg-paper px-3 py-3 ${
-              scoped ? "border-moss" : "border-line"
+              selected ? "border-moss" : "border-line"
             }`}
           >
             <div className="flex items-start gap-2">
               <FileText className="mt-0.5 h-4 w-4 shrink-0 text-moss" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">
-                  {info?.title || document.filename}
-                </div>
-                {info?.title && info.title !== document.filename && (
-                  <div className="truncate text-[11px] text-muted">{document.filename}</div>
-                )}
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted">
-                  <StatusPill status={document.status} />
-                  {info?.document_type && <span className="capitalize">{info.document_type}</span>}
-                  {document.page_count > 0 && <span>{document.page_count} p.</span>}
-                  {document.chunk_count > 0 && <span>{document.chunk_count} chunks</span>}
-                </div>
+                <Button
+                  variant="unstyled"
+                  onClick={() => onOpen(document.id)}
+                  className="w-full flex-col items-start text-left"
+                >
+                  <div className="truncate text-sm font-medium">
+                    {info?.title || document.filename}
+                  </div>
+                  {info?.title && info.title !== document.filename && (
+                    <div className="truncate text-[11px] text-muted">{document.filename}</div>
+                  )}
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+                    <StatusPill status={document.status} />
+                    {selected && <span className="text-moss">Selected</span>}
+                    {info?.document_type && <span className="capitalize">{info.document_type}</span>}
+                    {document.page_count > 0 && <span>{document.page_count} p.</span>}
+                    {document.chunk_count > 0 && <span>{document.chunk_count} chunks</span>}
+                  </div>
+                </Button>
                 {info?.summary && (
                   <p className="mt-2 line-clamp-3 text-xs leading-5 text-ink/80">{info.summary}</p>
                 )}
                 {info?.key_topics && info.key_topics.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
                     {info.key_topics.slice(0, 4).map((topic) => (
-                      <span
-                        key={topic}
-                        className="rounded-full bg-paper-2 px-2 py-0.5 text-[10px] text-muted"
-                      >
+                      <Badge key={topic} size="sm" className="font-normal normal-case">
                         {topic}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 )}
                 {document.error_message && (
                   <p className="mt-2 text-xs leading-5 text-clay">{document.error_message}</p>
                 )}
+                {(Boolean(onShare && !readOnly) || (document.status === "failed" && !readOnly)) && (
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {document.status === "ready" && (
-                    <button
-                      type="button"
-                      onClick={() => onToggleScope(document.id)}
-                      className={`cursor-pointer text-[11px] font-medium ${
-                        scoped ? "text-moss" : "text-muted hover:text-ink"
-                      }`}
+                  {onShare && !readOnly && (
+                    <Button
+                      variant="link"
+                      size="xs"
+                      onClick={() => onShare(document)}
+                      className="font-medium"
                     >
-                      {scoped ? "In this question" : "Ask this file"}
-                    </button>
+                      Share
+                    </Button>
                   )}
-                  {document.status === "failed" && (
-                    <button
-                      type="button"
-                      onClick={() => void onRetry(document.id)}
-                      className="cursor-pointer text-[11px] font-medium text-clay hover:text-ink"
-                    >
+                  {document.status === "failed" && !readOnly && (
+                    <Button variant="link-danger" size="xs" onClick={() => void onRetry(document.id)}>
                       Retry indexing
-                    </button>
+                    </Button>
                   )}
                 </div>
+                )}
               </div>
-              <button
-                type="button"
+              {!readOnly && (
+              <Button
+                variant="icon-ghost"
+                size="icon-sm"
                 aria-label={`Remove ${document.filename}`}
                 onClick={() => onDelete(document.id)}
-                className="cursor-pointer rounded p-1 text-muted hover:text-clay"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              </Button>
+              )}
             </div>
           </li>
           );
@@ -195,21 +215,13 @@ export function Library({
 }
 
 function StatusPill({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    ready: "bg-moss/10 text-moss",
-    pending: "bg-amber/10 text-amber",
-    processing: "bg-amber/10 text-amber",
-    failed: "bg-clay/10 text-clay",
-  };
-  return (
-    <span
-      className={`rounded-full px-2 py-0.5 font-medium capitalize ${
-        styles[status] ?? "bg-line text-muted"
-      }`}
-    >
-      {status}
-    </span>
-  );
+  const tone = {
+    ready: "moss",
+    pending: "amber",
+    processing: "amber",
+    failed: "clay",
+  } as const;
+  return <Badge tone={tone[status as keyof typeof tone] ?? "line"}>{status}</Badge>;
 }
 
 function EmptyPanel({ title, body }: { title: string; body: string }) {
