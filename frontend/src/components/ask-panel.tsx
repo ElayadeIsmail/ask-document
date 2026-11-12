@@ -3,23 +3,31 @@
 import { ArrowUp, BookOpen } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { fileUrl } from "@/lib/api";
 import type { ChatTurn, Citation, Collection } from "@/lib/types";
 
 type AskPanelProps = {
   collection: Collection | null;
   canAsk: boolean;
-  scopeCount: number;
   turns: ChatTurn[];
+  currentUserId: string;
+  sharedThread: boolean;
+  readOnly?: boolean;
+  hint?: string | null;
   onAsk: (question: string) => Promise<void>;
-  onClearScope: () => void;
+  onClearScope?: () => void;
 };
 
 export function AskPanel({
   collection,
   canAsk,
-  scopeCount,
   turns,
+  currentUserId,
+  sharedThread,
+  readOnly = false,
+  hint,
   onAsk,
   onClearScope,
 }: AskPanelProps) {
@@ -52,18 +60,14 @@ export function AskPanel({
         {collection && (
           <div className="hidden text-right text-xs text-muted sm:block">
             <p>
-              {scopeCount > 0
-                ? `Asking ${scopeCount} file${scopeCount === 1 ? "" : "s"}`
+              {sharedThread
+                ? hint || "Chat with this PDF"
                 : `${collection.ready_count} indexed ${collection.ready_count === 1 ? "source" : "sources"}`}
             </p>
-            {scopeCount > 0 && (
-              <button
-                type="button"
-                onClick={onClearScope}
-                className="mt-1 cursor-pointer text-[11px] text-moss hover:underline"
-              >
+            {onClearScope && (
+              <Button variant="link" size="xs" onClick={onClearScope} className="mt-1">
                 Ask the whole collection
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -79,12 +83,27 @@ export function AskPanel({
           </div>
         ) : (
           <div className="flex flex-col gap-7">
-            {turns.map((turn) => (
+            {turns.map((turn) => {
+              const mine = turn.userId === currentUserId;
+              return (
               <article key={turn.id} className="flex flex-col gap-3">
-                <div className="flex justify-end">
-                  <p className="max-w-[min(28rem,88%)] rounded-2xl rounded-br-md bg-ink px-4 py-3 font-serif text-lg italic leading-7 text-paper shadow-[0_10px_28px_rgba(28,24,20,0.16)]">
-                    {turn.question}
-                  </p>
+                <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={`flex max-w-[min(28rem,88%)] flex-col gap-1 ${
+                      mine ? "items-end" : "items-start"
+                    }`}
+                  >
+                    <span className="px-1 text-[11px] text-muted">{turn.username}</span>
+                    <p
+                      className={`rounded-2xl px-4 py-3 font-serif text-lg italic leading-7 shadow-[0_10px_28px_rgba(28,24,20,0.16)] ${
+                        mine
+                          ? "rounded-br-md bg-ink text-paper"
+                          : "rounded-bl-md bg-clay text-white"
+                      }`}
+                    >
+                      {turn.question}
+                    </p>
+                  </div>
                 </div>
                 {turn.pending && !turn.answer && (
                   <p className="w-fit rounded-2xl rounded-tl-md border border-line bg-white/80 px-4 py-3 text-sm text-muted shadow-[0_6px_18px_rgba(28,24,20,0.04)]">
@@ -93,6 +112,7 @@ export function AskPanel({
                 )}
                 {(turn.error || turn.answer || (turn.citations && turn.citations.length > 0)) && (
                   <div className="max-w-[min(44rem,94%)] rounded-2xl rounded-tl-md border border-line/80 bg-[#fffdf8] px-4 py-4 shadow-[0_8px_24px_rgba(28,24,20,0.05)] sm:px-5">
+                    <p className="mb-2 text-[11px] uppercase tracking-[0.14em] text-moss">AskDoc</p>
                     {turn.error && (
                       <p className="rounded-lg border border-clay/20 bg-clay/5 px-3 py-2 text-sm leading-6 text-clay">
                         {turn.error}
@@ -164,14 +184,15 @@ export function AskPanel({
                   </div>
                 )}
               </article>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
       <form onSubmit={handleSubmit} className="border-t border-line bg-paper px-4 py-4 sm:px-6">
         <div className="flex items-end gap-2 rounded-2xl border border-line bg-white p-2 shadow-[0_8px_30px_rgba(28,24,20,0.05)]">
-          <textarea
+          <Textarea
             value={question}
             rows={1}
             onChange={(event) => setQuestion(event.target.value)}
@@ -183,21 +204,27 @@ export function AskPanel({
             }}
             placeholder={
               canAsk
-                ? scopeCount > 0
-                  ? "Ask about the selected files…"
+                ? sharedThread
+                  ? "Ask about this PDF. People with access will see it…"
                   : "Ask anything in this collection…"
-                : "Index at least one PDF before asking"
+                : readOnly
+                  ? "You can read this chat"
+                  : sharedThread
+                    ? "This chat is visible here once the PDF is ready"
+                    : "Index at least one PDF before asking"
             }
             disabled={!canAsk || asking}
-            className="max-h-32 min-h-11 flex-1 resize-none bg-transparent px-3 py-2.5 text-sm leading-6 disabled:text-muted"
+            className="min-w-0 w-auto flex-1"
           />
-          <button
+          <Button
             type="submit"
+            size="icon"
             disabled={disabled || !question.trim()}
-            className="mb-0.5 inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl bg-ink text-paper disabled:cursor-not-allowed disabled:opacity-30"
+            className="mb-0.5 disabled:cursor-not-allowed disabled:opacity-30"
+            aria-label="Send question"
           >
             <ArrowUp className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </form>
     </section>
@@ -242,16 +269,16 @@ function AnswerBody({
         if (!citation) return <span key={index}>{part}</span>;
         const selected = activeId === `${turnId}:${n}`;
         return (
-          <button
+          <Button
             key={index}
-            type="button"
+            variant="unstyled"
             onClick={() => onCite(citation)}
-            className={`citation-mark mx-0.5 inline cursor-pointer rounded px-0.5 text-clay hover:underline ${
+            className={`citation-mark mx-0.5 px-0.5 text-clay hover:underline ${
               selected ? "bg-moss/10" : ""
             }`}
           >
             [{n}]
-          </button>
+          </Button>
         );
       })}
     </p>
