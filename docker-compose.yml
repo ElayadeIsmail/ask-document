@@ -28,8 +28,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
     environment:
       DATA_DIR: /data
       OLLAMA_HOST: http://ollama:11434
@@ -39,7 +37,12 @@ services:
       RETRIEVE_K: ${RETRIEVE_K:-8}
       OCR_ENABLED: ${OCR_ENABLED:-false}
       OCR_LANG: eng+fra
-      CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+      CORS_ORIGINS: '["http://localhost","http://127.0.0.1","http://localhost:3000","http://127.0.0.1:3000"]'
+      API_PREFIX: ${API_PREFIX:-/api/v1}
+      JWT_SECRET: "${JWT_SECRET:-dev-change-me-askdoc-secret-key!!}"
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@askdoc.local}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
       HF_HOME: /cache/huggingface
       TRANSFORMERS_CACHE: /cache/huggingface
       SENTENCE_TRANSFORMERS_HOME: /cache/huggingface
@@ -57,7 +60,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')",
+          "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:8000' + os.environ.get('API_PREFIX', '/api/v1') + '/health')",
         ]
       interval: 15s
       timeout: 5s
@@ -70,13 +73,39 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-    ports:
-      - "3000:3000"
+        NEXT_PUBLIC_API_PREFIX: ${API_PREFIX:-/api/v1}
     environment:
+      API_URL: http://backend:8000
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_PREFIX: ${API_PREFIX:-/api/v1}
     depends_on:
       backend:
         condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    environment:
+      API_PREFIX: ${API_PREFIX:-/api/v1}
+    volumes:
+      - ./nginx/nginx.conf.template:/etc/nginx/nginx.conf.template:ro
+      - ./nginx/snippets:/etc/nginx/snippets:ro
+    command:
+      - /bin/sh
+      - -c
+      - envsubst '$$API_PREFIX' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1$$API_PREFIX/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
 
 volumes:
   ollama:
