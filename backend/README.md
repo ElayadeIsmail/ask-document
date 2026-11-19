@@ -61,8 +61,8 @@ Frontend (Next.js, from `../frontend`):
 
 ```bash
 cd ../frontend
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 UI: http://localhost:3000 — create a collection, upload PDFs, ask with citations.

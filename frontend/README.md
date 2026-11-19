@@ -2,7 +2,7 @@
 
 Next.js 16 app for the AskDoc PFE: upload a PDF collection and ask questions with source citations.
 
-Talks to the FastAPI backend at `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8000`).
+The browser calls `NEXT_PUBLIC_API_PREFIX` (default `/api/v1`) on this same origin. Locally, Next rewrites that to an internal proxy, which forwards it to the API at `API_URL` and attaches the session cookie. In Docker, nginx does that split instead.
 
 From the repo root, `docker compose up --build` starts this UI, the API, Tesseract OCR, and Ollama.
 
@@ -11,9 +11,9 @@ From the repo root, `docker compose up --build` starts this UI, the API, Tessera
 From this folder:
 
 ```bash
-npm install
+bun install
 cp .env.example .env.local
-npm run dev
+bun run dev
 ```
 
 In another terminal, start the backend:
